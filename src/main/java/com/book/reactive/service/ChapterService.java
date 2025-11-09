@@ -1,0 +1,100 @@
+package com.book.reactive.service;
+
+import com.book.reactive.model.Chapter;
+import com.book.reactive.repository.ChapterRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.ReactiveRedisTemplate;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import java.time.LocalDateTime;
+
+@Service
+public class ChapterService {
+    private final ChapterRepository chapterRepository;
+    private final ReactiveRedisTemplate<String, Object> reactiveRedisTemplate;
+    
+    private static final String CHAPTER_CACHE_KEY_PREFIX = "chapter:";
+    private static final String CHAPTER_URL_KEY_PREFIX = "chapter:url:";
+
+    @Autowired
+    public ChapterService(ChapterRepository chapterRepository, ReactiveRedisTemplate<String, Object> reactiveRedisTemplate) {
+        this.chapterRepository = chapterRepository;
+        this.reactiveRedisTemplate = reactiveRedisTemplate;
+    }
+
+    // 获取所有章节
+    public Flux<Chapter> findAll() {
+        return chapterRepository.findAll();
+    }
+
+    // 根据ID查询章节
+    public Mono<Chapter> findById(Long id) {
+        return chapterRepository.findById(id);
+    }
+
+    // 根据书籍ID查询章节列表（完整字段）
+    public Flux<Chapter> findByBookId(Long bookId) {
+        return chapterRepository.findByBookIdOrderByChapterOrderIdAsc(bookId);
+    }
+    
+    // 优化版本：只查询必要字段（id, chapterName, chapterOrderId）
+    public Flux<Chapter> findByBookIdWithProjection(Long bookId) {
+        return chapterRepository.findByBookIdOrderByChapterOrderIdAscWithProjection(bookId);
+    }
+    
+    // 根据书籍ID和章节URL精确查询
+    public Mono<Chapter> findByBookIdAndChapterUrl(Long bookId, String chapterUrl) {
+        return chapterRepository.findByBookIdAndChapterUrl(bookId, chapterUrl);
+    }
+
+    // 保存章节
+    public Mono<Chapter> save(Chapter chapter) {
+        LocalDateTime now = LocalDateTime.now();
+        chapter.setCreateTime(now);
+        chapter.setModifyTime(now);
+        return chapterRepository.save(chapter)
+            .flatMap(savedChapter -> {
+                // 保存成功后更新Redis缓存
+                String chapterKey = CHAPTER_CACHE_KEY_PREFIX + savedChapter.getId();
+                String chapterUrlKey = CHAPTER_URL_KEY_PREFIX + savedChapter.getBookId() + ":" + savedChapter.getChapterUrl();
+                
+                // 缓存章节对象
+                return reactiveRedisTemplate.opsForValue().set(chapterKey, savedChapter)
+                    // 缓存章节URL索引
+                    .then(reactiveRedisTemplate.opsForValue().set(chapterUrlKey, savedChapter.getId()))
+                    // 返回保存的章节对象
+                    .then(Mono.just(savedChapter));
+            });
+    }
+
+    // 更新章节
+    public Mono<Chapter> update(Long id, Chapter chapter) {
+        return chapterRepository.findById(id)
+                .flatMap(existingChapter -> {
+                    existingChapter.setChapterUrl(chapter.getChapterUrl());
+                    existingChapter.setChapterName(chapter.getChapterName());
+                    existingChapter.setChapterOrderId(chapter.getChapterOrderId());
+                    existingChapter.setChapterTxt(chapter.getChapterTxt());
+                    existingChapter.setModifyUserId(chapter.getModifyUserId());
+                    existingChapter.setModifyUserName(chapter.getModifyUserName());
+                    existingChapter.setModifyTime(LocalDateTime.now());
+                    return chapterRepository.save(existingChapter);
+                });
+    }
+
+    // 删除章节
+    public Mono<Void> deleteById(Long id) {
+        return chapterRepository.deleteById(id);
+    }
+
+    // 批量删除章节
+    public Mono<Void> deleteByIdIn(Iterable<Long> ids) {
+        return chapterRepository.deleteAllById(ids);
+    }
+
+    // 根据章节名称搜索
+    public Flux<Chapter> searchByChapterName(String keyword) {
+        return chapterRepository.findByChapterNameContaining(keyword);
+    }
+}

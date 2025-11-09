@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>章节内容 - 阅读系统</title>
+    <!-- 引入 Bootstrap CSS -->
+    <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f5f5f5;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+        .header {
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .content-container {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        .chapter-header {
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .chapter-content {
+            line-height: 1.8;
+            font-size: 16px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            text-indent: 2em;
+            margin-bottom: 1.5rem;
+        }
+        .chapter-content p {
+            margin-bottom: 1rem;
+            line-height: 2;
+        }
+        .navigation {
+            padding: 1rem 0;
+            margin-top: 2rem;
+            border-top: 1px solid #e9ecef;
+        }
+        .nav-btn {
+            min-width: 100px;
+        }
+        .reading-stats {
+            text-align: center;
+            color: #6c757d;
+            font-size: 14px;
+            margin: 1rem 0;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            display: none;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            min-width: 300px;
+            display: none;
+        }
+        .font-size-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .font-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <header class="header">
+        <div class="container">
+            <div class="row justify-content-between align-items-center">
+                <div class="col-6">
+                    <h1 class="h3 mb-0">章节内容</h1>
+                </div>
+                <div class="col-6 text-end">
+                    <div class="font-size-control me-4 d-inline-block">
+                        <button id="decreaseFontBtn" class="btn btn-outline-secondary font-btn">A-</button>
+                        <button id="increaseFontBtn" class="btn btn-outline-secondary font-btn">A+</button>
+                    </div>
+                    <span id="currentUser" class="me-4"></span>
+                    <button id="backToChaptersBtn" class="btn btn-outline-primary">返回目录</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- 章节内容 -->
+        <div class="content-container">
+            <!-- 章节标题 -->
+            <div class="chapter-header">
+                <h2 id="chapterTitle" class="h4"></h2>
+                <div class="reading-stats">
+                    <span id="bookName" class="text-primary me-4"></span>
+                    <span id="chapterInfo"></span>
+                </div>
+            </div>
+            
+            <!-- 章节内容 -->
+            <div id="chapterContent" class="chapter-content">
+                <div class="text-center py-5">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 导航按钮 -->
+            <div class="navigation d-flex justify-content-between">
+                <button id="prevChapterBtn" class="nav-btn btn btn-outline-primary disabled" disabled>上一章</button>
+                <button id="nextChapterBtn" class="nav-btn btn btn-outline-primary disabled" disabled>下一章</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div id="loading" class="loading-overlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">加载中...</span>
+        </div>
+    </div>
+
+    <!-- 通知提示 -->
+    <div id="notification" class="notification toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header bg-primary text-white">
+            <strong class="me-auto">系统提示</strong>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div id="notificationMessage" class="toast-body"></div>
+    </div>
+
+    <!-- 引入 jQuery -->
+    <script src="/js/jquery-3.6.0.min.js"></script>
+    <!-- 引入 Bootstrap Bundle (包含 Popper) -->
+    <script src="bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        $(document).ready(function() {
+            // 初始化页面
+            initPage();
+        });
+
+        // 当前字体大小
+        let currentFontSize = 16;
+        // 章节信息和章节列表缓存
+        let chapterInfo = null;
+        let chaptersList = [];
+
+        // 初始化页面
+        function initPage() {
+            // 检查登录状态
+            if (!checkLoginStatus()) {
+                return;
+            }
+            
+            // 绑定事件
+            bindEvents();
+            
+            // 从URL获取章节ID和书籍ID
+            const chapterId = getChapterIdFromUrl();
+            const bookId = getBookIdFromUrl();
+            
+            if (!chapterId || !bookId) {
+                showNotification('无效的章节ID或书籍ID', 'bg-danger');
+                setTimeout(() => {
+                    window.location.href = 'books.html';
+                }, 2000);
+                return;
+            }
+            
+            // 加载章节内容和导航信息
+            loadChaptersList(bookId);
+            loadChapterDetail(chapterId, bookId);
+        }
+
+        // 从URL获取章节ID
+        function getChapterIdFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('id');
+        }
+
+        // 从URL获取书籍ID
+        function getBookIdFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('bookId');
+        }
+
+        // 检查登录状态
+        function checkLoginStatus() {
+            const token = localStorage.getItem('token');
+            const username = localStorage.getItem('username');
+            
+            if (!token || !username) {
+                window.location.href = 'login.html';
+                return false;
+            }
+            
+            $('#currentUser').text(`欢迎，${username}`);
+            return true;
+        }
+
+        // 绑定事件
+        function bindEvents() {
+            // 返回目录按钮点击事件
+            $('#backToChaptersBtn').click(function() {
+                const bookId = getBookIdFromUrl();
+                window.location.href = `book_chapters.html?id=${bookId}`;
+            });
+            
+            // 上一章按钮点击事件
+            $('#prevChapterBtn').click(function() {
+                navigateToChapter('prev');
+            });
+            
+            // 下一章按钮点击事件
+            $('#nextChapterBtn').click(function() {
+                navigateToChapter('next');
+            });
+            
+            // 字体大小调整事件
+            $('#decreaseFontBtn').click(function() {
+                if (currentFontSize > 12) {
+                    currentFontSize -= 1;
+                    updateFontSize();
+                }
+            });
+            
+            $('#increaseFontBtn').click(function() {
+                if (currentFontSize < 24) {
+                    currentFontSize += 1;
+                    updateFontSize();
+                }
+            });
+        }
+
+        // 更新字体大小
+        function updateFontSize() {
+            $('.chapter-content').css('font-size', `${currentFontSize}px`);
+        }
+
+        // 加载书籍章节列表
+        function loadChaptersList(bookId) {
+            const token = localStorage.getItem('token');
+            
+            $.ajax({
+                url: `/api/chapters/book/${bookId}`,
+                type: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Request-Time': new Date().getTime()
+                },
+                success: function(chapters) {
+                    chaptersList = chapters;
+                    // 更新导航按钮状态
+                    updateNavigationButtons();
+                },
+                error: function(xhr) {
+                    console.error('加载章节列表失败:', xhr);
+                }
+            });
+        }
+
+        // 加载章节详情
+        function loadChapterDetail(chapterId, bookId) {
+            showLoading();
+            const token = localStorage.getItem('token');
+            
+            // 加载书籍信息
+            $.ajax({
+                url: `/api/books/${bookId}`,
+                type: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                success: function(book) {
+                    $('#bookName').text(book.bookName);
+                },
+                error: function(xhr) {
+                    console.error('加载书籍信息失败:', xhr);
+                }
+            });
+            
+            // 加载章节内容
+            $.ajax({
+                url: `/api/chapters/${chapterId}`,
+                type: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Request-Time': new Date().getTime()
+                },
+                success: function(chapter) {
+                    chapterInfo = chapter;
+                    renderChapterDetail(chapter);
+                    updateNavigationButtons();
+                },
+                error: function(xhr) {
+                    if (xhr.status === 401) {
+                        showNotification('登录已过期，请重新登录', 'bg-danger');
+                        setTimeout(() => {
+                            window.location.href = 'login.html';
+                        }, 2000);
+                    } else {
+                        showNotification('加载章节内容失败', 'bg-danger');
+                        $('#chapterContent').html('<p class="text-center text-muted py-5">加载章节内容失败</p>');
+                    }
+                },
+                complete: function() {
+                    hideLoading();
+                }
+            });
+        }
+
+        // 渲染章节详情
+        function renderChapterDetail(chapter) {
+            $('#chapterTitle').text(chapter.chapterName);
+            $('#chapterInfo').text(`第 ${chapter.chapterOrderId} 章`);
+            
+            // 处理章节内容，将换行符转换为段落
+            let formattedContent = chapter.chapterTxt || '暂无内容';
+            
+            // 分割文本为段落并添加p标签
+            // 多个换行符视为一个段落分隔
+            const paragraphs = formattedContent.split(/\n\s*\n/);
+            let htmlContent = '';
+            
+            if (paragraphs.length > 1) {
+                // 如果有多个段落，每个段落用p标签包裹
+                paragraphs.forEach(para => {
+                    if (para.trim()) {
+                        htmlContent += `<p>${para.trim()}</p>`;
+                    }
+                });
+            } else {
+                // 如果只有一个段落，处理单行换行
+                htmlContent = formattedContent
+                    .split('\n')
+                    .filter(line => line.trim())
+                    .map(line => `<p>${line.trim()}</p>`)
+                    .join('');
+            }
+            
+            $('#chapterContent').html(htmlContent);
+            
+            // 设置文档标题
+            document.title = `${chapter.chapterName} - 阅读系统`;
+        }
+
+        // 更新导航按钮状态
+        function updateNavigationButtons() {
+            if (!chapterInfo || chaptersList.length === 0) {
+                return;
+            }
+            
+            // 查找当前章节在列表中的索引
+            let currentIndex = -1;
+            for (let i = 0; i < chaptersList.length; i++) {
+                if (chaptersList[i].id === chapterInfo.id) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            
+            if (currentIndex === -1) {
+                return;
+            }
+            
+            // 更新上一章按钮
+            const prevBtn = $('#prevChapterBtn');
+            if (currentIndex > 0) {
+                prevBtn.removeClass('disabled');
+                prevBtn.prop('disabled', false);
+            } else {
+                prevBtn.addClass('disabled');
+                prevBtn.prop('disabled', true);
+            }
+            
+            // 更新下一章按钮
+            const nextBtn = $('#nextChapterBtn');
+            if (currentIndex < chaptersList.length - 1) {
+                nextBtn.removeClass('disabled');
+                nextBtn.prop('disabled', false);
+            } else {
+                nextBtn.addClass('disabled');
+                nextBtn.prop('disabled', true);
+            }
+        }
+
+        // 导航到上一章或下一章
+        function navigateToChapter(direction) {
+            if (!chapterInfo || chaptersList.length === 0) {
+                return;
+            }
+            
+            // 查找当前章节在列表中的索引
+            let currentIndex = -1;
+            for (let i = 0; i < chaptersList.length; i++) {
+                if (chaptersList[i].id === chapterInfo.id) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            
+            if (currentIndex === -1) {
+                return;
+            }
+            
+            let targetChapter = null;
+            if (direction === 'prev' && currentIndex > 0) {
+                targetChapter = chaptersList[currentIndex - 1];
+            } else if (direction === 'next' && currentIndex < chaptersList.length - 1) {
+                targetChapter = chaptersList[currentIndex + 1];
+            }
+            
+            if (targetChapter) {
+                const bookId = getBookIdFromUrl();
+                window.location.href = `chapter_detail.html?id=${targetChapter.id}&bookId=${bookId}`;
+            }
+        }
+
+        // 显示通知
+        function showNotification(message, bgClass = 'bg-primary') {
+            const notification = $('#notification');
+            notification.removeClass('bg-primary bg-success bg-danger bg-warning');
+            notification.addClass(bgClass);
+            $('#notificationMessage').text(message);
+            notification.toast('show');
+        }
+
+        // 隐藏通知
+        function hideNotification() {
+            $('#notification').toast('hide');
+        }
+
+        // 显示加载遮罩
+        function showLoading() {
+            $('#loading').show();
+        }
+
+        // 隐藏加载遮罩
+        function hideLoading() {
+            $('#loading').hide();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 图书管理系统</title>
+    <!-- Bootstrap CSS -->
+    <link href="bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .login-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .login-header h2 {
+            color: #2c3e50;
+        }
+        .form-group {
+            margin-bottom: 1.2rem;
+        }
+        .btn-primary {
+            background-color: #3498db;
+            border-color: #3498db;
+        }
+        .btn-primary:hover {
+            background-color: #2980b9;
+            border-color: #2980b9;
+        }
+        .error-message {
+            color: #e74c3c;
+            text-align: center;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h2>图书管理系统</h2>
+            <p>请登录您的账户</p>
+        </div>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">用户名</label>
+                <input type="text" class="form-control" id="username" placeholder="请输入用户名" required>
+            </div>
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" class="form-control" id="password" placeholder="请输入密码" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">登录</button>
+        </form>
+        
+        <div id="errorMsg" class="error-message"></div>
+    </div>
+
+    <!-- jQuery -->
+    <script src="js/jquery-3.6.0.min.js"></script>
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="bootstrap/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        $(document).ready(function() {
+            // 登录表单提交处理
+            $('#loginForm').submit(function(event) {
+                event.preventDefault(); // 阻止默认提交
+                
+                // 获取表单数据
+                const username = $('#username').val();
+                const password = $('#password').val();
+                
+                // 清除之前的错误信息
+                $('#errorMsg').text('');
+                
+                // 显示加载状态
+                const submitBtn = $(this).find('button[type="submit"]');
+                submitBtn.prop('disabled', true);
+                submitBtn.text('登录中...');
+                
+                // 发送登录请求
+                $.ajax({
+                    url: '/api/users/login',
+                    type: 'POST',
+                    contentType: 'application/json',
+                 headers: {
+                        'X-Request-Time': new Date().getTime(),
+                    },
+                    data: JSON.stringify({ userName: username, userPwd: password }),
+                    success: function(response) {
+                        // 登录成功，保存token并跳转到书籍页面
+                        if (response && response.token) {
+                            localStorage.setItem('token', response.token);
+                            localStorage.setItem('username', username);
+                            window.location.href = 'books.html';
+                        } else {
+                            $('#errorMsg').text('登录失败：无效的响应');
+                            submitBtn.prop('disabled', false);
+                            submitBtn.text('登录');
+                        }
+                    },
+                    error: function(xhr) {
+                        // 登录失败，显示错误信息
+                        let errorMsg = '登录失败：请检查用户名和密码';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMsg = xhr.responseJSON.message;
+                        }
+                        $('#errorMsg').text(errorMsg);
+                        submitBtn.prop('disabled', false);
+                        submitBtn.text('登录');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

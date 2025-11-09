@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>书籍管理 - 图书管理系统</title>
+    <!-- Bootstrap CSS -->
+    <link href="bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .navbar {
+            margin-bottom: 2rem;
+        }
+        .card {
+            margin-bottom: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+        .card-header {
+            background-color: #3498db;
+            color: white;
+            font-weight: 600;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .book-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        .search-container {
+            margin-bottom: 1.5rem;
+        }
+        .pagination {
+            justify-content: center;
+        }
+        .toast {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1050;
+            min-width: 280px;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">图书管理系统</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="books.html">书籍管理</a>
+                    </li>
+                </ul>
+                <div class="navbar-nav">
+                    <li class="nav-item">
+                        <span class="nav-link" id="currentUser"></span>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-danger" href="#" id="logoutBtn">退出登录</a>
+                    </li>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- 搜索和添加按钮区域 -->
+        <div class="search-container">
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="input-group">
+                        <input type="text" id="searchInput" class="form-control" placeholder="搜索书籍名称...">
+                        <button class="btn btn-primary" id="searchBtn">搜索</button>
+                    </div>
+                </div>
+                <div class="col-md-4 text-end">
+                    <button class="btn btn-success" id="addBookBtn">添加书籍</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 书籍列表区域 -->
+        <div id="booksList" class="row"></div>
+
+        <!-- 分页控件 -->
+        <nav aria-label="Page navigation">
+            <ul class="pagination" id="pagination"></ul>
+        </nav>
+    </div>
+
+    <!-- 书籍编辑模态框 -->
+    <div class="modal fade" id="bookModal" tabindex="-1" aria-labelledby="bookModalLabel">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="bookModalLabel">添加书籍</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="bookForm">
+                        <input type="hidden" id="bookId">
+                        <div class="mb-3">
+                            <label for="bookName" class="form-label">书籍名称</label>
+                            <input type="text" class="form-control" id="bookName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="bookUrl" class="form-label">书籍路径</label>
+                            <input type="text" class="form-control" id="bookUrl">
+                        </div>
+                        <div class="mb-3">
+                            <label for="bookSummary" class="form-label">书籍简介</label>
+                            <textarea class="form-control" id="bookSummary" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-primary" id="saveBookBtn">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知提示 -->
+    <div class="toast align-items-center text-white bg-primary border-0" id="notification" role="alert">
+        <div class="d-flex">
+            <div class="toast-body" id="notificationMessage"></div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto"></button>
+        </div>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div class="loading-overlay" id="loading" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">加载中...</span>
+        </div>
+    </div>
+
+    <!-- jQuery -->
+    <script src="js/jquery-3.6.0.min.js"></script>
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="bootstrap/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        $(document).ready(function() {
+            // 初始化页面
+            initPage();
+        });
+
+        // 初始化页面
+        function initPage() {
+            // 检查登录状态
+            checkLoginStatus();
+            
+            // 绑定事件
+            bindEvents();
+            
+            // 加载书籍列表
+            loadBooks(0, 12, '');
+        }
+
+        // 检查登录状态
+        function checkLoginStatus() {
+            const token = localStorage.getItem('token');
+            const username = localStorage.getItem('username');
+            
+            if (!token || !username) {
+                window.location.href = 'login.html';
+                return false;
+            }
+            
+            $('#currentUser').text(`欢迎，${username}`);
+            return true;
+        }
+
+        // 绑定事件
+        function bindEvents() {
+            // 搜索按钮点击事件
+            $('#searchBtn').click(function() {
+                const searchTerm = $('#searchInput').val().trim();
+                loadBooks(0, 12, searchTerm);
+            });
+            
+            // 搜索框回车键事件
+            $('#searchInput').keypress(function(e) {
+                if (e.which === 13) {
+                    $('#searchBtn').click();
+                }
+            });
+            
+            // 添加书籍按钮点击事件
+            $('#addBookBtn').click(function() {
+                openAddBookModal();
+            });
+            
+            // 保存书籍按钮点击事件
+            $('#saveBookBtn').click(function() {
+                saveBook();
+            });
+            
+            // 退出登录按钮点击事件
+            $('#logoutBtn').click(function() {
+                logout();
+            });
+            
+            // 通知关闭按钮事件
+            $('.toast .btn-close').click(function() {
+                hideNotification();
+            });
+        }
+
+        // 加载书籍列表
+        function loadBooks(page, size, bookName) {
+            showLoading();
+            
+            const token = localStorage.getItem('token');
+            
+            $.ajax({
+                url: `/api/books/page?page=${page}&size=${size}${bookName ? `&bookName=${encodeURIComponent(bookName)}` : ''}`,
+                type: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Request-Time': new Date().getTime()
+                },
+                success: function(data) {
+                    renderBooksList(data);
+                    renderPagination(data);
+                },
+                error: function(xhr) {
+                    if (xhr.status === 401) {
+                        showNotification('登录已过期，请重新登录', 'bg-danger');
+                        setTimeout(() => {
+                            window.location.href = 'login.html';
+                        }, 2000);
+                    } else {
+                        showNotification('加载书籍列表失败', 'bg-danger');
+                    }
+                },
+                complete: function() {
+                    hideLoading();
+                }
+            });
+        }
+
+        // 渲染书籍列表
+        function renderBooksList(data) {
+            const booksList = $('#booksList');
+            booksList.empty();
+            
+            if (data && data.books && data.books.length > 0) {
+                data.books.forEach(book => {
+                    const bookCard = $(
+                        `<div class="col-md-6 col-lg-4">
+                            <div class="card">
+                                <div class="card-header">${book.bookName}</div>
+                                <div class="card-body">
+                                    <p class="card-text">${book.bookSummary || '暂无简介'}</p>
+                                    ${book.bookUrl ? `<a href="${book.bookUrl}" target="_blank" class="btn btn-outline-info btn-sm">查看书籍</a>` : ''}
+                                    <div class="book-actions">
+                                        <button class="btn btn-info btn-sm view-chapters" data-id="${book.id}">查看目录</button>
+                                        <button class="btn btn-primary btn-sm edit-book" data-id="${book.id}">编辑</button>
+                                        <button class="btn btn-danger btn-sm delete-book" data-id="${book.id}" data-name="${book.bookName}">删除</button>
+                                    </div>
+                                </div>
+                                <div class="card-footer text-muted text-sm">
+                                    <div>创建者: ${book.createUserName || '未知'} 创建时间: ${book.createTime || '未知'}</div>
+                                    <div>更新者: ${book.modifyUserName || '未知'} 更新时间: ${book.modifyTime || '未知'}</div>
+                                </div>
+                            </div>
+                        </div>`
+                    );
+                    booksList.append(bookCard);
+                });
+                
+                // 绑定查看目录、编辑和删除按钮事件
+                $('.view-chapters').click(function() {
+                    const bookId = $(this).data('id');
+                    window.location.href = `book_chapters.html?id=${bookId}`;
+                });
+                
+                $('.edit-book').click(function() {
+                    const bookId = $(this).data('id');
+                    openEditBookModal(bookId);
+                });
+                
+                $('.delete-book').click(function() {
+                    const bookId = $(this).data('id');
+                    const bookName = $(this).data('name');
+                    deleteBook(bookId, bookName);
+                });
+            } else {
+                booksList.append(
+                    `<div class="col-12 text-center py-5">
+                        <p class="text-muted">暂无书籍数据</p>
+                    </div>`
+                );
+            }
+        }
+
+        // 渲染分页控件
+        function renderPagination(data) {
+            const pagination = $('#pagination');
+            pagination.empty();
+            
+            // 如果没有数据或数据无效，显示空分页控件
+            if (!data) {
+                return;
+            }
+            
+            // 确保totalPages和相关属性有默认值
+            const totalPages = data.pageSize || 1;
+            const currentPage = data.page || 0;
+            const pageSize = data.size || 12;
+            
+            // 上一页按钮
+            const prevLi = $('<li class="page-item"></li>');
+            const prevLink = $(`<a class="page-link" href="#" aria-label="Previous">
+                <span aria-hidden="true">&laquo;</span>
+            </a>`);
+            
+            if (currentPage === 0) {
+                prevLi.addClass('disabled');
+            } else {
+                prevLink.click(function() {
+                    const searchTerm = $('#searchInput').val().trim();
+                    loadBooks(currentPage - 1, pageSize, searchTerm);
+                });
+            }
+            prevLi.append(prevLink);
+            pagination.append(prevLi);
+            
+            // 页码按钮
+            let startPage = Math.max(0, currentPage - 2);
+            let endPage = Math.min(totalPages - 1, currentPage + 2);
+            
+            // 确保显示5个页码按钮
+            if (endPage - startPage < 4) {
+                if (startPage === 0) {
+                    endPage = Math.min(totalPages - 1, startPage + 4);
+                } else if (endPage === totalPages - 1) {
+                    startPage = Math.max(0, endPage - 4);
+                }
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const pageLi = $('<li class="page-item"></li>');
+                if (i === currentPage) {
+                    pageLi.addClass('active');
+                }
+                const pageLink = $(`<a class="page-link" href="#">${i + 1}</a>`);
+                pageLink.click(function() {
+                    const searchTerm = $('#searchInput').val().trim();
+                    loadBooks(i, pageSize, searchTerm);
+                });
+                pageLi.append(pageLink);
+                pagination.append(pageLi);
+            }
+            
+            // 下一页按钮
+            const nextLi = $('<li class="page-item"></li>');
+            const nextLink = $(`<a class="page-link" href="#" aria-label="Next">
+                <span aria-hidden="true">&raquo;</span>
+            </a>`);
+            
+            if (currentPage === totalPages - 1) {
+                nextLi.addClass('disabled');
+            } else {
+                nextLink.click(function() {
+                    const searchTerm = $('#searchInput').val().trim();
+                    loadBooks(currentPage + 1, pageSize, searchTerm);
+                });
+            }
+            nextLi.append(nextLink);
+            pagination.append(nextLi);
+        }
+
+        // 打开添加书籍模态框
+        function openAddBookModal() {
+            $('#bookModalLabel').text('添加书籍');
+            $('#bookForm')[0].reset();
+            $('#bookId').val('');
+            $('#bookModal').modal('show');
+        }
+
+        // 打开编辑书籍模态框
+        function openEditBookModal(bookId) {
+            showLoading();
+            const token = localStorage.getItem('token');
+            
+            $.ajax({
+                url: `/api/books/${bookId}`,
+                type: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Request-Time': new Date().getTime()
+                },
+                success: function(book) {
+                    $('#bookModalLabel').text('编辑书籍');
+                    $('#bookId').val(book.id);
+                    $('#bookName').val(book.bookName);
+                    $('#bookUrl').val(book.bookUrl || '');
+                    $('#bookSummary').val(book.bookSummary || '');
+                    $('#bookModal').modal('show');
+                },
+                error: function() {
+                    showNotification('加载书籍详情失败', 'bg-danger');
+                },
+                complete: function() {
+                    hideLoading();
+                }
+            });
+        }
+
+        // 保存书籍
+        function saveBook() {
+            const bookId = $('#bookId').val();
+            const bookName = $('#bookName').val().trim();
+            const bookUrl = $('#bookUrl').val().trim();
+            const bookSummary = $('#bookSummary').val().trim();
+            
+            if (!bookName) {
+                showNotification('请输入书籍名称', 'bg-warning');
+                return;
+            }
+            
+            const bookData = {
+                bookName: bookName,
+                bookUrl: bookUrl,
+                bookSummary: bookSummary
+            };
+            
+            const token = localStorage.getItem('token');
+            const isEdit = !!bookId;
+            const url = isEdit ? `/api/books/${bookId}` : '/api/books';
+            const method = isEdit ? 'PUT' : 'POST';
+            
+            showLoading();
+            
+            $.ajax({
+                url: url,
+                type: method,
+                contentType: 'application/json',
+                data: JSON.stringify(bookData),
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Request-Time': new Date().getTime()
+                },
+                success: function() {
+                    $('#bookModal').modal('hide');
+                    showNotification(isEdit ? '书籍更新成功' : '书籍添加成功', 'bg-success');
+                    // 重新加载书籍列表
+                    const searchTerm = $('#searchInput').val().trim();
+                    loadBooks(0, 12, searchTerm);
+                },
+                error: function() {
+                    showNotification(isEdit ? '书籍更新失败' : '书籍添加失败', 'bg-danger');
+                },
+                complete: function() {
+                    hideLoading();
+                }
+            });
+        }
+
+        // 删除书籍
+        function deleteBook(bookId, bookName) {
+            if (confirm(`确定要删除书籍"${bookName}"吗？`)) {
+                showLoading();
+                const token = localStorage.getItem('token');
+                
+                $.ajax({
+                    url: `/api/books/${bookId}`,
+                    type: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'X-Request-Time': new Date().getTime()
+                    },
+                    success: function() {
+                        showNotification('书籍删除成功', 'bg-success');
+                        // 重新加载书籍列表
+                        const searchTerm = $('#searchInput').val().trim();
+                        loadBooks(0, 10, searchTerm);
+                    },
+                    error: function() {
+                        showNotification('书籍删除失败', 'bg-danger');
+                    },
+                    complete: function() {
+                        hideLoading();
+                    }
+                });
+            }
+        }
+
+        // 退出登录
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            window.location.href = 'login.html';
+        }
+
+        // 显示通知
+        function showNotification(message, bgClass = 'bg-primary') {
+            const notification = $('#notification');
+            notification.removeClass('bg-primary bg-success bg-danger bg-warning');
+            notification.addClass(bgClass);
+            $('#notificationMessage').text(message);
+            notification.toast('show');
+        }
+
+        // 隐藏通知
+        function hideNotification() {
+            $('#notification').toast('hide');
+        }
+
+        // 显示加载遮罩
+        function showLoading() {
+            $('#loading').show();
+        }
+
+        // 隐藏加载遮罩
+        function hideLoading() {
+            $('#loading').hide();
+        }
+    </script>
+</body>
+</html>

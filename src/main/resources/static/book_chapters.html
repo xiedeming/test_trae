@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>书籍目录 - 阅读系统</title>
+    <!-- 引入 Bootstrap CSS -->
+    <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .header {
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 1rem 0;
+            margin-bottom: 2rem;
+        }
+        .book-info {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .chapter-list {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+        }
+        .chapter-item {
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+        .chapter-item:hover {
+            background-color: #f8f9fa;
+            padding-left: 0.5rem;
+        }
+        .chapter-item:last-child {
+            border-bottom: none;
+        }
+        .chapter-link {
+            color: #333;
+            text-decoration: none;
+            display: block;
+        }
+        .chapter-link:hover {
+            color: #0d6efd;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            display: none;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            min-width: 300px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <header class="header">
+        <div class="container">
+            <div class="row justify-content-between align-items-center">
+                <div class="col-6">
+                    <h1 class="h3 mb-0">书籍目录</h1>
+                </div>
+                <div class="col-6 text-end">
+                    <span id="currentUser" class="me-4"></span>
+                    <button id="backToListBtn" class="btn btn-outline-primary">返回列表</button>
+                    <button id="logoutBtn" class="btn btn-outline-danger">退出登录</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- 书籍信息 -->
+        <div class="book-info">
+            <h2 id="bookName" class="h4 mb-2"></h2>
+            <p id="bookSummary" class="text-muted mb-2"></p>
+            <div class="text-sm text-muted">
+                <span id="chapterCount"></span>
+            </div>
+        </div>
+
+        <!-- 章节列表 -->
+        <div class="chapter-list">
+            <h3 class="h5 mb-4">章节列表</h3>
+            <div id="chaptersContainer">
+                <!-- 章节列表将通过JavaScript动态加载 -->
+                <div class="text-center py-5">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div id="loading" class="loading-overlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">加载中...</span>
+        </div>
+    </div>
+
+    <!-- 通知提示 -->
+    <div id="notification" class="notification toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header bg-primary text-white">
+            <strong class="me-auto">系统提示</strong>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div id="notificationMessage" class="toast-body"></div>
+    </div>
+
+    <!-- 引入 jQuery -->
+    <script src="js/jquery-3.6.0.min.js"></script>
+    <!-- 引入 Bootstrap Bundle (包含 Popper) -->
+    <script src="bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        $(document).ready(function() {
+            // 初始化页面
+            initPage();
+        });
+
+        // 初始化页面
+        function initPage() {
+            // 检查登录状态
+            if (!checkLoginStatus()) {
+                return;
+            }
+            
+            // 绑定事件
+            bindEvents();
+            
+            // 从URL获取书籍ID
+            const bookId = getBookIdFromUrl();
+            if (!bookId) {
+                showNotification('无效的书籍ID', 'bg-danger');
+                setTimeout(() => {
+                    window.location.href = 'books.html';
+                }, 2000);
+                return;
+            }
+            
+            // 加载书籍信息和章节列表
+            loadBookInfo(bookId);
+            loadChapters(bookId);
+        }
+
+        // 从URL获取书籍ID
+        function getBookIdFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('id');
+        }
+
+        // 检查登录状态
+        function checkLoginStatus() {
+            const token = localStorage.getItem('token');
+            const username = localStorage.getItem('username');
+            
+            if (!token || !username) {
+                window.location.href = 'login.html';
+                return false;
+            }
+            
+            $('#currentUser').text(`欢迎，${username}`);
+            return true;
+        }
+
+        // 绑定事件
+        function bindEvents() {
+            // 返回列表按钮点击事件
+            $('#backToListBtn').click(function() {
+                window.location.href = 'books.html';
+            });
+            
+            // 退出登录按钮点击事件
+            $('#logoutBtn').click(function() {
+                logout();
+            });
+        }
+
+        // 加载书籍信息
+        function loadBookInfo(bookId) {
+            const token = localStorage.getItem('token');
+            
+            $.ajax({
+                url: `/api/books/${bookId}`,
+                type: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Request-Time': new Date().getTime()
+                },
+                success: function(book) {
+                    $('#bookName').text(book.bookName);
+                    $('#bookSummary').text(book.bookSummary || '暂无简介');
+                },
+                error: function(xhr) {
+                    if (xhr.status === 401) {
+                        showNotification('登录已过期，请重新登录', 'bg-danger');
+                        setTimeout(() => {
+                            window.location.href = 'login.html';
+                        }, 2000);
+                    } else {
+                        showNotification('加载书籍信息失败', 'bg-danger');
+                    }
+                }
+            });
+        }
+
+        // 加载章节列表
+        function loadChapters(bookId) {
+            showLoading();
+            const token = localStorage.getItem('token');
+            
+            $.ajax({
+                url: `/api/chapters/book/${bookId}`,
+                type: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Request-Time': new Date().getTime()
+                },
+                success: function(chapters) {
+                    renderChaptersList(chapters);
+                    $('#chapterCount').text(`共 ${chapters.length} 章`);
+                },
+                error: function(xhr) {
+                    if (xhr.status === 401) {
+                        showNotification('登录已过期，请重新登录', 'bg-danger');
+                        setTimeout(() => {
+                            window.location.href = 'login.html';
+                        }, 2000);
+                    } else {
+                        showNotification('加载章节列表失败', 'bg-danger');
+                        $('#chaptersContainer').html('<p class="text-center text-muted py-5">加载章节列表失败</p>');
+                    }
+                },
+                complete: function() {
+                    hideLoading();
+                }
+            });
+        }
+
+        // 渲染章节列表
+        function renderChaptersList(chapters) {
+            const container = $('#chaptersContainer');
+            container.empty();
+            
+            if (chapters && chapters.length > 0) {
+                chapters.forEach((chapter, index) => {
+                    const chapterItem = $('<div class="chapter-item"></div>');
+                    const chapterLink = $(`<a href="chapter_detail.html?id=${chapter.id}&bookId=${chapter.bookId}" class="chapter-link"></a>`);
+                    chapterLink.text(`${chapter.chapterName}`);
+                    chapterItem.append(chapterLink);
+                    container.append(chapterItem);
+                });
+            } else {
+                container.html('<p class="text-center text-muted py-5">暂无章节数据</p>');
+            }
+        }
+
+        // 退出登录
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            window.location.href = 'login.html';
+        }
+
+        // 显示通知
+        function showNotification(message, bgClass = 'bg-primary') {
+            const notification = $('#notification');
+            notification.removeClass('bg-primary bg-success bg-danger bg-warning');
+            notification.addClass(bgClass);
+            $('#notificationMessage').text(message);
+            notification.toast('show');
+        }
+
+        // 隐藏通知
+        function hideNotification() {
+            $('#notification').toast('hide');
+        }
+
+        // 显示加载遮罩
+        function showLoading() {
+            $('#loading').show();
+        }
+
+        // 隐藏加载遮罩
+        function hideLoading() {
+            $('#loading').hide();
+        }
+    </script>
+</body>
+</html>
