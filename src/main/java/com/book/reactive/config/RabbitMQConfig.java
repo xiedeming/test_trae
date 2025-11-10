@@ -15,7 +15,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
-
+import org.springframework.amqp.rabbit.listener.RabbitListenerContainerFactory;
+import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 /**
  * RabbitMQ配置类
  */
@@ -110,5 +112,47 @@ public class RabbitMQConfig {
         classMapper.setTrustedPackages("com.book.reactive.model");
         converter.setClassMapper(classMapper);
         return converter;
+    }
+    
+    /**
+     * 配置批量监听器容器工厂，用于批量消费MQ消息
+     */
+    @Bean(name = "batchRabbitListenerContainerFactory")
+    public org.springframework.amqp.rabbit.listener.RabbitListenerContainerFactory<?> batchRabbitListenerContainerFactory(org.springframework.amqp.rabbit.connection.ConnectionFactory connectionFactory,
+                                                                                 Jackson2JsonMessageConverter messageConverter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+        factory.setMessageConverter(messageConverter);
+        
+        // 配置批量消费参数
+        factory.setBatchListener(true); // 启用批量监听器
+        factory.setBatchSize(100); // 每次批量处理的消息数量上限
+        factory.setConsumerBatchEnabled(true); // 启用消费者批量处理
+        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL); // 手动确认
+        
+        // 配置并发参数
+        factory.setConcurrentConsumers(5); // 并发消费者数量
+        factory.setMaxConcurrentConsumers(10); // 最大并发消费者数量
+        
+        // 设置预取数量，提高吞吐量
+        factory.setPrefetchCount(200);
+        
+        return factory;
+    }
+    
+    /**
+     * 配置默认的监听器容器工厂
+     */
+    @Bean(name = "rabbitListenerContainerFactory")
+    public RabbitListenerContainerFactory<?> defaultRabbitListenerContainerFactory(ConnectionFactory connectionFactory,
+                                                                                  Jackson2JsonMessageConverter messageConverter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+        factory.setMessageConverter(messageConverter);
+        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+        factory.setConcurrentConsumers(3);
+        factory.setMaxConcurrentConsumers(5);
+        factory.setPrefetchCount(100);
+        return factory;
     }
 }

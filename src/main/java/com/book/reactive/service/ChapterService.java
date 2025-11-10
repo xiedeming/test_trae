@@ -126,6 +126,44 @@ public class ChapterService {
     public Mono<Void> deleteByIdIn(Iterable<Long> ids) {
         return chapterRepository.deleteAllById(ids);
     }
+    
+    // 批量保存章节
+    public Flux<Chapter> saveAll(Flux<Chapter> chapters) {
+        LocalDateTime now = LocalDateTime.now();
+        
+        // 1. 预处理所有章节 - 设置时间戳和特征码
+        Flux<Chapter> processedChapters = chapters.map(chapter -> {
+            chapter.setCreateTime(now);
+            chapter.setModifyTime(now);
+            
+            // 生成并设置章节特征码
+            if (chapter.getChapterTxt() != null && chapter.getFeatureCode() == null) {
+                String featureCode = stringUtil.extractFeatureCode(chapter.getChapterTxt());
+                chapter.setFeatureCode(featureCode);
+            }
+            
+            return chapter;
+        });
+        
+        // 2. 收集到列表并批量保存
+        return processedChapters
+            .collectList()
+            .flatMapMany(chapterList -> chapterRepository.saveAll(chapterList))
+            // 3. 对批量保存后的每个章节更新Redis缓存
+            .flatMap(savedChapter -> {
+                String chapterKey = CHAPTER_CACHE_KEY_PREFIX + savedChapter.getId();
+                String featureCode = savedChapter.getFeatureCode() != null ? 
+                    savedChapter.getFeatureCode() : stringUtil.extractFeatureCode(savedChapter.getChapterTxt());
+                String chapterFeatureCodeKey = "chapter:feature:" + featureCode;
+                String chapterUrlKey = CHAPTER_URL_KEY_PREFIX + savedChapter.getBookId() + ":" + savedChapter.getChapterUrl();
+                
+                // 缓存章节对象和索引
+                return reactiveRedisTemplate.opsForValue().set(chapterKey, savedChapter)
+                    .then(reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, savedChapter.getId()))
+                    .then(reactiveRedisTemplate.opsForValue().set(chapterUrlKey, savedChapter.getId()))
+                    .then(Mono.just(savedChapter));
+            });
+    }
 
     // 根据章节名称搜索
     public Flux<Chapter> searchByChapterName(String keyword) {
