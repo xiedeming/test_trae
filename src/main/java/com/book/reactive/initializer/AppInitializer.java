@@ -40,8 +40,6 @@ public class AppInitializer implements ApplicationRunner {
     private static final String BOOK_CACHE_KEY_PREFIX = "book:";
     private static final String BOOK_NAME_KEY_PREFIX = "book:name:";
     private static final String INIT_BOOK_NAME_KEY = "init:book:name:full:flag";
-    private static final String CHAPTER_CACHE_KEY_PREFIX = "chapter:";
-    private static final String CHAPTER_URL_KEY_PREFIX = "chapter:url:";
     private static final String CHAPTER_FEATURE_CODE_KEY_PREFIX = "chapter:feature:";
     private static final String INIT_CHAPTER_FEATURE_CODE_KEY = "init:chapter:feature:full:flag";
     @Override
@@ -104,9 +102,7 @@ public class AppInitializer implements ApplicationRunner {
             .flatMap(chapter -> {
                 // 存储章节对象
                 // String chapterKey = CHAPTER_CACHE_KEY_PREFIX + chapter.getId();
-                String chapterFeatureCodeKey = CHAPTER_FEATURE_CODE_KEY_PREFIX + chapter.getFeatureCode();
-                String chapterUrlKey = CHAPTER_URL_KEY_PREFIX + chapter.getBookId() + ":" + chapter.getChapterUrl();
-                
+                String chapterFeatureCodeKey = CHAPTER_FEATURE_CODE_KEY_PREFIX + chapter.getFeatureCode()+":"+chapter.getChapterName();
                 // 先检查章节特征码索引缓存是否存在（作为主要判断依据）
                 return reactiveRedisTemplate.hasKey(chapterFeatureCodeKey)
                     .flatMap(featureCodeExists -> {
@@ -118,8 +114,6 @@ public class AppInitializer implements ApplicationRunner {
                             logger.info("缓存章节: {}，书籍ID: {}, 特征码: {}", chapter.getChapterName(), chapter.getBookId(), chapter.getFeatureCode());
                             // 然后设置章节特征码索引
                             return reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, chapter.getId())
-                                // 同时保留URL索引用于兼容
-                                .then(reactiveRedisTemplate.opsForValue().set(chapterUrlKey, chapter.getId()))
                                 .then(Mono.just(true));
                         }
                     });
