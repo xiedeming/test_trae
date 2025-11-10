@@ -182,9 +182,9 @@ public class ChapterTaskListener {
                         .then(reactiveRedisTemplate.opsForValue()
                             .set(chapterUrlKey, existingChapter.getId()))
                         .timeout(Duration.ofSeconds(10)) // 添加超时控制
-                        .then(reactiveRedisTemplate.opsForValue()
-                            .set("chapter:" + existingChapter.getId(), existingChapter))
-                        .timeout(Duration.ofSeconds(10)) // 添加超时控制
+                        // .then(reactiveRedisTemplate.opsForValue()
+                        //     .set("chapter:" + existingChapter.getId(), existingChapter))
+                        // .timeout(Duration.ofSeconds(10)) // 添加超时控制
                         .then(Mono.just(existingChapter.getId()));
                     }
                     
@@ -213,12 +213,7 @@ public class ChapterTaskListener {
                         .flatMap(savedChapter -> {
                             logger.info("章节保存成功并更新Redis缓存: {}，章节ID={}", 
                                 chapterTask.getChapterName(), savedChapter.getId());
-                            // 缓存章节到Redis（使用特征码作为主要缓存键）
-                            String chapterKey = "chapter:" + savedChapter.getId();
-
-                            return reactiveRedisTemplate.opsForValue().set(chapterKey, savedChapter)
-                                .timeout(Duration.ofSeconds(10))
-                                .then(reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, savedChapter.getId()))
+                            return reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, savedChapter.getId())
                                 .timeout(Duration.ofSeconds(10))
                                 .then(reactiveRedisTemplate.opsForValue().set(chapterUrlKey, savedChapter.getId()))
                                 .timeout(Duration.ofSeconds(10))
@@ -250,11 +245,8 @@ public class ChapterTaskListener {
                     .flatMap(savedChapter -> {
                         logger.info("章节保存成功(备用路径): {}，章节ID={}，特征码={}", 
                             chapterTask.getChapterName(), savedChapter.getId(), savedChapter.getFeatureCode());
-                        // 缓存章节到Redis（使用特征码作为主要缓存键）
-                        String chapterKey = "chapter:" + savedChapter.getId();
-                        return reactiveRedisTemplate.opsForValue().set(chapterKey, savedChapter)
-                            .timeout(Duration.ofSeconds(10))
-                            .then(reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, savedChapter.getId()))
+
+                        return reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, savedChapter.getId())
                             .timeout(Duration.ofSeconds(10))
                             .then(reactiveRedisTemplate.opsForValue().set(chapterUrlKey, savedChapter.getId()))
                             .timeout(Duration.ofSeconds(10))
@@ -287,11 +279,8 @@ public class ChapterTaskListener {
                         logger.info("备用路径保存成功: {}，章节ID={}，特征码={}", 
                             chapterTask.getChapterName(), savedChapter.getId(), savedChapter.getFeatureCode());
                         // 缓存章节到Redis（使用特征码作为主要缓存键）
-                        String chapterKey = "chapter:" + savedChapter.getId();
                         
-                        return reactiveRedisTemplate.opsForValue().set(chapterKey, savedChapter)
-                            .timeout(Duration.ofSeconds(10))
-                            .then(reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, savedChapter.getId()))
+                        return reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, savedChapter.getId())
                             .timeout(Duration.ofSeconds(10))
                             .then(reactiveRedisTemplate.opsForValue().set(chapterUrlKey, savedChapter.getId()))
                             .timeout(Duration.ofSeconds(10))
