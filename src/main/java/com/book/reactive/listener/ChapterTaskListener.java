@@ -150,8 +150,9 @@ public class ChapterTaskListener {
         
         // 构建Redis键
         String chapterUrlKey = CHAPTER_URL_KEY_PREFIX + chapterTask.getBookId() + ":" + chapterTask.getChapterUrl();
-        String chapterFeatureCodeKey = "chapter:feature:" + stringUtil.extractFeatureCode(content);
-        
+                String featureCode = stringUtil.extractFeatureCode(content);
+        String chapterFeatureCodeKey = "chapter:feature:" + featureCode;  
+
         // 先从Redis检查章节是否存在（使用特征码）
         reactiveRedisTemplate.opsForValue().get(chapterFeatureCodeKey)
             .subscribeOn(Schedulers.boundedElastic())
@@ -196,10 +197,8 @@ public class ChapterTaskListener {
                     chapter.setChapterOrderId(chapterTask.getChapterOrderId());
                     chapter.setChapterTxt(content);
                     // 生成并设置章节特征码
-                    String featureCode = stringUtil.extractFeatureCode(content);
                     chapter.setFeatureCode(featureCode);
                     logger.info("章节特征码生成完成: {}，特征码={}", chapterTask.getChapterName(), featureCode);
-                    
                     // 设置创建用户信息
                     chapter.setCreateUserId(1L);
                     chapter.setCreateUserName("system");
@@ -236,9 +235,7 @@ public class ChapterTaskListener {
                     chapter.setChapterOrderId(chapterTask.getChapterOrderId());
                     chapter.setChapterTxt(content);
                     // 生成并设置特征码
-                    String featureCode = stringUtil.extractFeatureCode(content);
                     chapter.setFeatureCode(featureCode);
-                    
                     // 设置创建用户信息
                     chapter.setCreateUserId(1L);
                     chapter.setCreateUserName("system");
@@ -278,7 +275,6 @@ public class ChapterTaskListener {
                 chapter.setChapterOrderId(chapterTask.getChapterOrderId());
                 chapter.setChapterTxt(content);
                 // 生成并设置特征码
-                String featureCode = stringUtil.extractFeatureCode(content);
                 chapter.setFeatureCode(featureCode);
                 chapter.setCreateUserId(1L);
                 chapter.setCreateUserName("system");
