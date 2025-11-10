@@ -91,7 +91,7 @@ public class AppInitializer implements ApplicationRunner {
             .publishOn(Schedulers.boundedElastic())
             .doOnSubscribe(subscription -> logger.info("开始处理章节数据缓存"))
             // 添加错误处理和重试机制
-            .flatMap(book -> chapterService.findByBookIds(book.getId())
+            .flatMap(book -> chapterService.findByBookId(book.getId())
                 .onErrorResume(error -> {
                     logger.warn("查询书籍章节失败，稍后重试: {}，书籍ID: {}, 错误: {}", book.getBookName(), book.getId(), error.getMessage());
                     // 发生错误时返回空流，避免整个流程中断
@@ -103,7 +103,7 @@ public class AppInitializer implements ApplicationRunner {
             .runOn(Schedulers.boundedElastic())
             .flatMap(chapter -> {
                 // 存储章节对象
-                String chapterKey = CHAPTER_CACHE_KEY_PREFIX + chapter.getId();
+                // String chapterKey = CHAPTER_CACHE_KEY_PREFIX + chapter.getId();
                 String chapterFeatureCodeKey = CHAPTER_FEATURE_CODE_KEY_PREFIX + chapter.getFeatureCode();
                 String chapterUrlKey = CHAPTER_URL_KEY_PREFIX + chapter.getBookId() + ":" + chapter.getChapterUrl();
                 
@@ -113,20 +113,11 @@ public class AppInitializer implements ApplicationRunner {
                         if (featureCodeExists) {
                             logger.debug("章节缓存已存在(基于特征码)，跳过: {}，书籍ID: {}", chapter.getChapterName(), chapter.getBookId());
                             // 检查并创建章节对象缓存
-                            return reactiveRedisTemplate.hasKey(chapterKey)
-                                .flatMap(chapterExists -> {
-                                    if (chapterExists) {
-                                        return Mono.just(false); // 都已存在
-                                    }
-                                    return reactiveRedisTemplate.opsForValue().set(chapterKey, chapter)
-                                        .doOnSuccess(__ -> logger.info("创建章节对象缓存: {}，书籍ID: {}", chapter.getChapterName(), chapter.getBookId()));
-                                });
+                            return Mono.just(false); // 特征码已存在，无需创建对象缓存
                         } else {
                             logger.info("缓存章节: {}，书籍ID: {}, 特征码: {}", chapter.getChapterName(), chapter.getBookId(), chapter.getFeatureCode());
-                            // 章节特征码索引不存在，先设置章节对象缓存
-                            return reactiveRedisTemplate.opsForValue().set(chapterKey, chapter)
-                                // 然后设置章节特征码索引
-                                .then(reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, chapter.getId()))
+                            // 然后设置章节特征码索引
+                            return reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, chapter.getId())
                                 // 同时保留URL索引用于兼容
                                 .then(reactiveRedisTemplate.opsForValue().set(chapterUrlKey, chapter.getId()))
                                 .then(Mono.just(true));
