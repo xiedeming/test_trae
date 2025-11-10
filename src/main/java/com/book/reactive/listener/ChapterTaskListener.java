@@ -102,9 +102,14 @@ public class ChapterTaskListener {
      * 启动批处理流程
      */
     private void startBatchProcessing() {
+        // 确保超时时间为正数，防止出现Timeout period must be strictly positive异常
+        int safeTimeoutSeconds = Math.max(1, batchTimeoutSeconds);
+        // 确保批次大小为正数，防止出现maxSize must be strictly positive异常
+        int safeBatchSize = Math.max(1, batchSize);
+        
         // 按照批次大小和超时时间收集任务
         taskSink.asFlux()
-            .bufferTimeout(batchSize, Duration.ofSeconds(batchTimeoutSeconds))
+            .bufferTimeout(safeBatchSize, Duration.ofSeconds(safeTimeoutSeconds))
             .doOnNext(batch -> logger.info("处理批次任务: 数量={}", batch.size()))
             .flatMap(this::processBatchTasks)
             .subscribeOn(Schedulers.boundedElastic())
