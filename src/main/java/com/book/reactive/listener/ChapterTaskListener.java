@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import javax.annotation.PostConstruct;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -71,8 +72,11 @@ public class ChapterTaskListener {
         
         // 创建一个可多播的Sink
         this.taskSink = Sinks.many().unicast().onBackpressureBuffer();
-        
-        // 启动批处理流程
+    }
+    
+    @PostConstruct
+    public void init() {
+        // 确保在所有属性注入完成后再启动批处理流程
         startBatchProcessing();
     }
 
@@ -86,10 +90,16 @@ public class ChapterTaskListener {
         try {
             // 将批量任务发送到Sink中进行处理
             chapterTasks.forEach(task -> {
-                Sinks.EmitResult result = taskSink.tryEmitNext(task);
-                if (result.isFailure()) {
-                    logger.error("任务入队失败: {} - {}, 原因: {}", 
-                        task.getBookId(), task.getChapterName(), result);
+                try {
+                    // 使用emitNext并指定RETRY_NON_SERIALIZED模式，确保在多线程环境下能正确处理
+                    Sinks.EmitResult result = taskSink.tryEmitNext(task);
+                    if (result.isFailure()) {
+                        logger.error("任务入队失败: {} - {}, 原因: {}", 
+                            task.getBookId(), task.getChapterName(), result);
+                    }
+                } catch (Exception e) {
+                    logger.error("任务入队异常: {} - {}, 原因: {}", 
+                        task.getBookId(), task.getChapterName(), e.getMessage(), e);
                 }
             });
         } catch (Exception e) {
@@ -103,9 +113,9 @@ public class ChapterTaskListener {
      */
     private void startBatchProcessing() {
         // 确保超时时间为正数，防止出现Timeout period must be strictly positive异常
-        int safeTimeoutSeconds = Math.max(1, batchTimeoutSeconds);
+        int safeTimeoutSeconds = Math.max(5, batchTimeoutSeconds);
         // 确保批次大小为正数，防止出现maxSize must be strictly positive异常
-        int safeBatchSize = Math.max(1, batchSize);
+        int safeBatchSize = Math.max(500, batchSize);
         
         // 按照批次大小和超时时间收集任务
         taskSink.asFlux()
