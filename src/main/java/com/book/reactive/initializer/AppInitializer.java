@@ -42,7 +42,8 @@ public class AppInitializer implements ApplicationRunner {
     private static final String INIT_BOOK_NAME_KEY = "init:book:name:full:flag";
     private static final String CHAPTER_CACHE_KEY_PREFIX = "chapter:";
     private static final String CHAPTER_URL_KEY_PREFIX = "chapter:url:";
-    private static final String INIT_CHAPTER_URL_KEY = "init:chapter:url:full:flag";
+    private static final String CHAPTER_FEATURE_CODE_KEY_PREFIX = "chapter:feature:";
+    private static final String INIT_CHAPTER_FEATURE_CODE_KEY = "init:chapter:feature:full:flag";
     @Override
     public void run(ApplicationArguments args) throws Exception {
         logger.info("开始初始化Redis缓存，加载书籍和章节数据...");
@@ -51,7 +52,7 @@ public class AppInitializer implements ApplicationRunner {
         
         // 检查是否需要执行初始化操作
         boolean needCacheBook = reactiveRedisTemplate.opsForValue().get(INIT_BOOK_NAME_KEY).block() == null;
-        boolean needCacheChapter = reactiveRedisTemplate.opsForValue().get(INIT_CHAPTER_URL_KEY).block() == null;
+        boolean needCacheChapter = reactiveRedisTemplate.opsForValue().get(INIT_CHAPTER_FEATURE_CODE_KEY).block() == null;
         
         if (needCacheBook || needCacheChapter) {
             // 只查询一次书籍数据，供两个缓存操作使用
@@ -67,10 +68,10 @@ public class AppInitializer implements ApplicationRunner {
             }
             
             if (needCacheChapter) {
-                logger.info("章节URL索引未初始化，开始初始化");
+                logger.info("章节特征码索引未初始化，开始初始化");
                 cacheChapter(latch, books);
             } else {
-                logger.info("章节URL索引已初始化，跳过初始化");
+                logger.info("章节特征码索引已初始化，跳过初始化");
                 latch.countDown();
             }
         } else {
@@ -86,12 +87,11 @@ public class AppInitializer implements ApplicationRunner {
     }
     private void cacheChapter(CountDownLatch latch, Flux<Book> books) {
         // 加载所有章节到Redis，使用传入的书籍数据
-
         books
             .publishOn(Schedulers.boundedElastic())
             .doOnSubscribe(subscription -> logger.info("开始处理章节数据缓存"))
             // 添加错误处理和重试机制
-            .flatMap(book -> chapterService.findByBookId(book.getId())
+            .flatMap(book -> chapterService.findByBookIds(book.getId())
                 .onErrorResume(error -> {
                     logger.warn("查询书籍章节失败，稍后重试: {}，书籍ID: {}, 错误: {}", book.getBookName(), book.getId(), error.getMessage());
                     // 发生错误时返回空流，避免整个流程中断
@@ -104,13 +104,14 @@ public class AppInitializer implements ApplicationRunner {
             .flatMap(chapter -> {
                 // 存储章节对象
                 String chapterKey = CHAPTER_CACHE_KEY_PREFIX + chapter.getId();
+                String chapterFeatureCodeKey = CHAPTER_FEATURE_CODE_KEY_PREFIX + chapter.getFeatureCode();
                 String chapterUrlKey = CHAPTER_URL_KEY_PREFIX + chapter.getBookId() + ":" + chapter.getChapterUrl();
                 
-                // 先检查章节URL索引缓存是否存在（作为主要判断依据）
-                return reactiveRedisTemplate.hasKey(chapterUrlKey)
-                    .flatMap(urlIndexExists -> {
-                        if (urlIndexExists) {
-                            logger.debug("章节缓存已存在，跳过: {}，书籍ID: {}", chapter.getChapterName(), chapter.getBookId());
+                // 先检查章节特征码索引缓存是否存在（作为主要判断依据）
+                return reactiveRedisTemplate.hasKey(chapterFeatureCodeKey)
+                    .flatMap(featureCodeExists -> {
+                        if (featureCodeExists) {
+                            logger.debug("章节缓存已存在(基于特征码)，跳过: {}，书籍ID: {}", chapter.getChapterName(), chapter.getBookId());
                             // 检查并创建章节对象缓存
                             return reactiveRedisTemplate.hasKey(chapterKey)
                                 .flatMap(chapterExists -> {
@@ -121,10 +122,12 @@ public class AppInitializer implements ApplicationRunner {
                                         .doOnSuccess(__ -> logger.info("创建章节对象缓存: {}，书籍ID: {}", chapter.getChapterName(), chapter.getBookId()));
                                 });
                         } else {
-                            logger.info("缓存章节: {}，书籍ID: {}", chapter.getChapterName(), chapter.getBookId());
-                            // 章节URL索引不存在，先设置章节对象缓存
+                            logger.info("缓存章节: {}，书籍ID: {}, 特征码: {}", chapter.getChapterName(), chapter.getBookId(), chapter.getFeatureCode());
+                            // 章节特征码索引不存在，先设置章节对象缓存
                             return reactiveRedisTemplate.opsForValue().set(chapterKey, chapter)
-                                // 然后设置章节URL索引
+                                // 然后设置章节特征码索引
+                                .then(reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, chapter.getId()))
+                                // 同时保留URL索引用于兼容
                                 .then(reactiveRedisTemplate.opsForValue().set(chapterUrlKey, chapter.getId()))
                                 .then(Mono.just(true));
                         }
@@ -135,7 +138,7 @@ public class AppInitializer implements ApplicationRunner {
             .count()
             .doOnSuccess(count -> {
                 logger.info("章节数据缓存初始化完成，共新增{}章缓存", count);
-                reactiveRedisTemplate.opsForValue().set(INIT_CHAPTER_URL_KEY, 1).subscribe();
+                reactiveRedisTemplate.opsForValue().set(INIT_CHAPTER_FEATURE_CODE_KEY, 1).subscribe();
                 latch.countDown();
             })
             .doOnError(error -> {

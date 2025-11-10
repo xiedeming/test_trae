@@ -19,6 +19,7 @@ public class Chapter {
     private Long modifyUserId; // 章节修改用户id
     private String modifyUserName; // 章节修改用户名称
     private LocalDateTime modifyTime; // 修改时间
+    private String featureCode; // 章节特征码（MD5格式）
 
     // Getters and Setters
     public Long getId() {
@@ -115,5 +116,13 @@ public class Chapter {
 
     public void setModifyTime(LocalDateTime modifyTime) {
         this.modifyTime = modifyTime;
+    }
+
+    public String getFeatureCode() {
+        return featureCode;
+    }
+
+    public void setFeatureCode(String featureCode) {
+        this.featureCode = featureCode;
     }
 }

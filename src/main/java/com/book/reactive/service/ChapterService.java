@@ -2,6 +2,7 @@ package com.book.reactive.service;
 
 import com.book.reactive.model.Chapter;
 import com.book.reactive.repository.ChapterRepository;
+import com.book.reactive.util.StringUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -13,14 +14,16 @@ import java.time.LocalDateTime;
 public class ChapterService {
     private final ChapterRepository chapterRepository;
     private final ReactiveRedisTemplate<String, Object> reactiveRedisTemplate;
+    private final StringUtil stringUtil;
     
     private static final String CHAPTER_CACHE_KEY_PREFIX = "chapter:";
     private static final String CHAPTER_URL_KEY_PREFIX = "chapter:url:";
 
     @Autowired
-    public ChapterService(ChapterRepository chapterRepository, ReactiveRedisTemplate<String, Object> reactiveRedisTemplate) {
+    public ChapterService(ChapterRepository chapterRepository, ReactiveRedisTemplate<String, Object> reactiveRedisTemplate, StringUtil stringUtil) {
         this.chapterRepository = chapterRepository;
         this.reactiveRedisTemplate = reactiveRedisTemplate;
+        this.stringUtil = stringUtil;
     }
 
     // 获取所有章节
@@ -37,6 +40,10 @@ public class ChapterService {
     public Flux<Chapter> findByBookId(Long bookId) {
         return chapterRepository.findByBookIdOrderByChapterOrderIdAsc(bookId);
     }
+
+    public Flux<Chapter> findByBookIds(Long bookId) {
+        return chapterRepository.findByBookIdOrder(bookId);
+    }
     
     // 优化版本：只查询必要字段（id, chapterName, chapterOrderId）
     public Flux<Chapter> findByBookIdWithProjection(Long bookId) {
@@ -47,12 +54,24 @@ public class ChapterService {
     public Mono<Chapter> findByBookIdAndChapterUrl(Long bookId, String chapterUrl) {
         return chapterRepository.findByBookIdAndChapterUrl(bookId, chapterUrl);
     }
+    
+    // 根据特征码查询章节（用于内容重复检查）
+    public Mono<Chapter> findByFeatureCode(String featureCode) {
+        return chapterRepository.findByFeatureCode(featureCode);
+    }
 
     // 保存章节
     public Mono<Chapter> save(Chapter chapter) {
         LocalDateTime now = LocalDateTime.now();
         chapter.setCreateTime(now);
         chapter.setModifyTime(now);
+        
+        // 生成并设置章节特征码
+        if (chapter.getChapterTxt() != null && chapter.getFeatureCode() == null) {
+            String featureCode = stringUtil.extractFeatureCode(chapter.getChapterTxt());
+            chapter.setFeatureCode(featureCode);
+        }
+        
         return chapterRepository.save(chapter)
             .flatMap(savedChapter -> {
                 // 保存成功后更新Redis缓存
@@ -72,6 +91,12 @@ public class ChapterService {
     public Mono<Chapter> update(Long id, Chapter chapter) {
         return chapterRepository.findById(id)
                 .flatMap(existingChapter -> {
+                    // 当章节内容更新时，重新生成特征码
+                    if (chapter.getChapterTxt() != null && !chapter.getChapterTxt().equals(existingChapter.getChapterTxt())) {
+                        String featureCode = stringUtil.extractFeatureCode(chapter.getChapterTxt());
+                        existingChapter.setFeatureCode(featureCode);
+                    }
+                    
                     existingChapter.setChapterUrl(chapter.getChapterUrl());
                     existingChapter.setChapterName(chapter.getChapterName());
                     existingChapter.setChapterOrderId(chapter.getChapterOrderId());
@@ -79,7 +104,13 @@ public class ChapterService {
                     existingChapter.setModifyUserId(chapter.getModifyUserId());
                     existingChapter.setModifyUserName(chapter.getModifyUserName());
                     existingChapter.setModifyTime(LocalDateTime.now());
-                    return chapterRepository.save(existingChapter);
+                    
+                    return chapterRepository.save(existingChapter)
+                            .doOnSuccess(updatedChapter -> {
+                                // 更新Redis缓存
+                                String cacheKey = CHAPTER_CACHE_KEY_PREFIX + updatedChapter.getId();
+                                reactiveRedisTemplate.opsForValue().set(cacheKey, updatedChapter);
+                            });
                 });
     }
 

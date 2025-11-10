@@ -114,7 +114,8 @@ create table bookdb.chapter
     create_time      datetime     not null comment '创建时间',
     modify_user_id   bigint          not null comment '章节修改用户id',
     modify_user_name varchar(64)  not null comment '章节修改用户名称',
-    modify_time      datetime     not null comment '修改时间'
+    modify_time      datetime     not null comment '修改时间',
+    feature_code     varchar(32) null comment '特征码'
 )
     comment '书籍章节表';
 
