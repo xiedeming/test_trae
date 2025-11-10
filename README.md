@@ -11,7 +11,7 @@
 # docker build -t spring-reactive-test . 
 # 连接到本地Redis和RabbitMQ服务的完整命令（使用--network=host或明确指定网络）
 <!-- docker run -d --name spring-reactive-test-1 \
-  -p 8080:8081 \
+  -p 8081:8080 \
   --network=my-network \
   spring-reactive-test -->
   <!-- docker run -d \
