@@ -321,9 +321,9 @@ public class BookCrawlerService {
                         return reactiveRedisTemplate.opsForValue()
                             .set(chapterUrlKey, existingChapter.getId())
                             .timeout(java.time.Duration.ofSeconds(10))
-                            .then(reactiveRedisTemplate.opsForValue()
-                                .set("chapter:" + existingChapter.getId(), existingChapter))
-                            .timeout(java.time.Duration.ofSeconds(10))
+                            // .then(reactiveRedisTemplate.opsForValue()
+                            //     .set("chapter:" + existingChapter.getId(), existingChapter))
+                            // .timeout(java.time.Duration.ofSeconds(10))
                             .then(Mono.just(false)); // 章节已存在，不发送任务
                     }
                     
