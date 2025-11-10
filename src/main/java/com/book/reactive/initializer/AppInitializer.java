@@ -47,41 +47,41 @@ public class AppInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) throws Exception {
         logger.info("开始初始化Redis缓存，加载书籍和章节数据...");
         
-        // CountDownLatch latch = new CountDownLatch(2); // 增加计数，因为现在有两个异步任务
+        CountDownLatch latch = new CountDownLatch(2); // 增加计数，因为现在有两个异步任务
         
-        // // 检查是否需要执行初始化操作
-        // boolean needCacheBook = reactiveRedisTemplate.opsForValue().get(INIT_BOOK_NAME_KEY).block() == null;
-        // boolean needCacheChapter = reactiveRedisTemplate.opsForValue().get(INIT_CHAPTER_URL_KEY).block() == null;
+        // 检查是否需要执行初始化操作
+        boolean needCacheBook = reactiveRedisTemplate.opsForValue().get(INIT_BOOK_NAME_KEY).block() == null;
+        boolean needCacheChapter = reactiveRedisTemplate.opsForValue().get(INIT_CHAPTER_URL_KEY).block() == null;
         
-        // if (needCacheBook || needCacheChapter) {
-        //     // 只查询一次书籍数据，供两个缓存操作使用
-        //     logger.info("查询数据库中的书籍数据");
-        //     Flux<Book> books = bookService.findAll().cache(); // 使用cache()操作符缓存查询结果
+        if (needCacheBook || needCacheChapter) {
+            // 只查询一次书籍数据，供两个缓存操作使用
+            logger.info("查询数据库中的书籍数据");
+            Flux<Book> books = bookService.findAll().cache(); // 使用cache()操作符缓存查询结果
             
-        //     if (needCacheBook) {
-        //         logger.info("书籍名称索引未初始化，开始初始化");
-        //         cacheBook(latch, books);
-        //     } else {
-        //         logger.info("书籍名称索引已初始化，跳过初始化");
-        //         latch.countDown();
-        //     }
+            if (needCacheBook) {
+                logger.info("书籍名称索引未初始化，开始初始化");
+                cacheBook(latch, books);
+            } else {
+                logger.info("书籍名称索引已初始化，跳过初始化");
+                latch.countDown();
+            }
             
-        //     if (needCacheChapter) {
-        //         logger.info("章节URL索引未初始化，开始初始化");
-        //         cacheChapter(latch, books);
-        //     } else {
-        //         logger.info("章节URL索引已初始化，跳过初始化");
-        //         latch.countDown();
-        //     }
-        // } else {
-        //     // 都已初始化，直接完成
-        //     logger.info("书籍和章节索引都已初始化，跳过所有初始化操作");
-        //     latch.countDown();
-        //     latch.countDown();
-        // }
+            if (needCacheChapter) {
+                logger.info("章节URL索引未初始化，开始初始化");
+                cacheChapter(latch, books);
+            } else {
+                logger.info("章节URL索引已初始化，跳过初始化");
+                latch.countDown();
+            }
+        } else {
+            // 都已初始化，直接完成
+            logger.info("书籍和章节索引都已初始化，跳过所有初始化操作");
+            latch.countDown();
+            latch.countDown();
+        }
         
-        // // 等待初始化完成
-        // latch.await();
+        // 等待初始化完成
+        latch.await();
         logger.info("Redis缓存初始化全部完成");
     }
     private void cacheChapter(CountDownLatch latch, Flux<Book> books) {
