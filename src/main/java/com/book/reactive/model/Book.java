@@ -18,6 +18,7 @@ public class Book {
     private Long modifyUserId; // 书籍修改用户id
     private String modifyUserName; // 书籍修改用户名称
     private LocalDateTime modifyTime; // 修改时间
+    private String author; // 作者
 
     // Getters and Setters
     public Long getId() {
@@ -106,5 +107,13 @@ public class Book {
 
     public void setModifyTime(LocalDateTime modifyTime) {
         this.modifyTime = modifyTime;
+    }
+
+    public String getAuthor() {
+        return author;
+    }
+
+    public void setAuthor(String author) {
+        this.author = author;
     }
 }

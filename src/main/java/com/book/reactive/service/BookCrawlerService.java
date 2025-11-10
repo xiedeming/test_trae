@@ -38,7 +38,11 @@ public class BookCrawlerService {
     @Autowired
     private ReactiveRedisTemplate<String, Object> reactiveRedisTemplate;
 
+    @Autowired
+    private ChapterService chapterService;
+
     private static final String BOOK_NAME_KEY_PREFIX = "book:name:";
+    private static final String CHAPTER_URL_KEY_PREFIX = "chapter:url:";
 
     private final WebClient webClient;
 
@@ -107,6 +111,7 @@ public class BookCrawlerService {
                 book.setWebsiteId(website.getId());
                 book.setBookName(extractBookName(bookElement));
                 book.setBookSummary(extractDescription(bookElement));
+                book.setAuthor(extractAuthor(bookElement));
                 // 封面URL暂时存放在bookSummary的额外字段中
                 book.setBookUrl(extractBookUrl(bookElement, website.getWebsiteUrl()));
                 book.setCreateTime(LocalDateTime.now());
@@ -202,8 +207,7 @@ public class BookCrawlerService {
             .flatMap(chapterListHtml -> {
                 logger.info("获取章节列表成功，准备解析章节: {}", book.getBookName());
                 // 解析章节并发送任务
-                parseChaptersAndSendTasks(chapterListHtml, book, website);
-                return Mono.just(true);
+                return parseChaptersAndSendTasks(chapterListHtml, book, website);
             })
             .onErrorResume(e -> {
                 logger.error("获取章节列表失败: {}", e.getMessage(), e);
@@ -236,12 +240,12 @@ public class BookCrawlerService {
     }
 
     /**
-     * 解析章节并发送任务
+     * 解析章节并发送任务，仅在章节不存在时发送
      */
-    private void parseChaptersAndSendTasks(String html, Book book, Website website) {
+    private Mono<Boolean> parseChaptersAndSendTasks(String html, Book book, Website website) {
         if (html == null || html.isEmpty()) {
             logger.warn("章节列表HTML为空，跳过解析: {}", book.getBookName());
-            return;
+            return Mono.just(false);
         }
 
         try {
@@ -251,7 +255,9 @@ public class BookCrawlerService {
             Elements chapterElements = doc.select(".panel-chapterlist a, .chapter-item a, .volume-list a");
             logger.info("找到章节数量: {}，书籍: {}", chapterElements.size(), book.getBookName());
             
+            List<Mono<Boolean>> chapterTasks = new ArrayList<>();
             int orderId = 1;
+            
             for (Element chapterElement : chapterElements) {
                 String chapterName = chapterElement.text().trim();
                 String chapterUrl = chapterElement.absUrl("href");
@@ -264,33 +270,99 @@ public class BookCrawlerService {
                     task.setChapterOrderId(orderId++);
                     task.setWebsiteId(website.getId());
                     task.setWebsiteUrl(website.getWebsiteUrl());
-
-                    // 发送到RabbitMQ
-                    try {
-                        logger.info("准备发送章节任务: 书籍ID={}, 章节名称={}", 
-                                task.getBookId(), task.getChapterName());
-                        rabbitMQService.sendChapterTask(task);
-                        logger.info("章节任务发送成功: 书籍ID={}, 章节名称={}", 
-                                task.getBookId(), task.getChapterName());
-                    } catch (Exception e) {
-                        logger.error("章节任务发送失败: 书籍ID={}, 章节名称={}, 错误: {}", 
-                                task.getBookId(), task.getChapterName(), e.getMessage(), e);
-                        // 继续发送其他章节，不中断循环
-                    }
-
-                    // 避免发送过快，加入短暂延迟
-                    try {
-                        Thread.sleep(50);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
+                    
+                    // 添加章节任务到列表
+                    chapterTasks.add(checkAndSendChapterTask(task));
                 }
             }
 
-            logger.info("书籍章节任务发送完成: {}，共{}章", book.getBookName(), chapterElements.size());
+            // 并行执行所有章节任务检查和发送
+            return reactor.core.publisher.Flux.fromIterable(chapterTasks)
+                .flatMap(task -> task, 5) // 限制并发数
+                .collectList()
+                .map(results -> {
+                    logger.info("书籍章节任务发送完成: {}，共{}章", book.getBookName(), chapterElements.size());
+                    return !results.isEmpty() && results.stream().anyMatch(result -> result);
+                })
+                .onErrorReturn(false);
 
         } catch (Exception e) {
             logger.error("解析章节失败: {}，错误: {}", book.getBookName(), e.getMessage(), e);
+            return Mono.just(false);
+        }
+    }
+    
+    /**
+     * 检查章节是否存在，如果不存在则发送任务
+     */
+    private Mono<Boolean> checkAndSendChapterTask(ChapterTask task) {
+        // 构建Redis键
+        String chapterUrlKey = CHAPTER_URL_KEY_PREFIX + task.getBookId() + ":" + task.getChapterUrl();
+        
+        // 先从Redis检查章节是否存在
+        return reactiveRedisTemplate.opsForValue().get(chapterUrlKey)
+            .timeout(java.time.Duration.ofSeconds(30))
+            .flatMap(existingChapterId -> {
+                logger.info("Redis中检测到章节已存在，跳过发送: 书籍ID={}, 章节名称={}", 
+                    task.getBookId(), task.getChapterName());
+                return Mono.just(false); // 章节已存在，不发送任务
+            })
+            .switchIfEmpty(Mono.defer(() -> {
+                // Redis中不存在，再查询数据库确认
+                logger.info("Redis中未找到章节，查询数据库: 书籍ID={}, 章节名称={}", 
+                    task.getBookId(), task.getChapterName());
+                return chapterService.findByBookIdAndChapterUrl(task.getBookId(), task.getChapterUrl())
+                .timeout(java.time.Duration.ofSeconds(30))
+                .flatMap(existingChapter -> {
+                    if (existingChapter != null) {
+                        logger.info("数据库中检测到章节已存在，跳过发送: 书籍ID={}, 章节名称={}", 
+                            task.getBookId(), task.getChapterName());
+                        // 数据库中存在，将其缓存到Redis
+                        return reactiveRedisTemplate.opsForValue()
+                            .set(chapterUrlKey, existingChapter.getId())
+                            .timeout(java.time.Duration.ofSeconds(10))
+                            .then(reactiveRedisTemplate.opsForValue()
+                                .set("chapter:" + existingChapter.getId(), existingChapter))
+                            .timeout(java.time.Duration.ofSeconds(10))
+                            .then(Mono.just(false)); // 章节已存在，不发送任务
+                    }
+                    
+                    // 章节不存在，发送任务
+                    return sendChapterTask(task);
+                })
+                .switchIfEmpty(sendChapterTask(task)); // 数据库也不存在，发送任务
+            }))
+            .onErrorResume(error -> {
+                logger.error("检查章节失败，尝试发送任务: 书籍ID={}, 章节名称={}, 错误: {}", 
+                    task.getBookId(), task.getChapterName(), error.getMessage());
+                // 出错时仍然尝试发送任务
+                return sendChapterTask(task);
+            });
+    }
+    
+    /**
+     * 发送章节任务到RabbitMQ
+     */
+    private Mono<Boolean> sendChapterTask(ChapterTask task) {
+        try {
+            logger.info("准备发送章节任务: 书籍ID={}, 章节名称={}", 
+                    task.getBookId(), task.getChapterName());
+            rabbitMQService.sendChapterTask(task);
+            logger.info("章节任务发送成功: 书籍ID={}, 章节名称={}", 
+                    task.getBookId(), task.getChapterName());
+            
+            // 避免发送过快，加入短暂延迟
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            
+            return Mono.just(true);
+        } catch (Exception e) {
+            logger.error("章节任务发送失败: 书籍ID={}, 章节名称={}, 错误: {}", 
+                    task.getBookId(), task.getChapterName(), e.getMessage(), e);
+            return Mono.just(false);
         }
     }
 
@@ -300,14 +372,9 @@ public class BookCrawlerService {
         return element.attribute("title").getValue().trim();
     }
 
-    // 由于Book类中没有author字段，暂时注释掉
-    /*private String extractAuthor(Element element) {
-        Elements authorElements = element.select(".book-author, .author, .writer");
-        return authorElements.isEmpty() ? null : authorElements.first().text().trim();
-    }*/
 
     private String extractDescription(Element element) {
-        Elements descElements = element.select(".glyphicon,.glyphicon-fire");
+        Elements descElements = element.select(".shop-info");
         return descElements.isEmpty() ? null : descElements.first().text().trim();
     }
 
@@ -323,5 +390,35 @@ public class BookCrawlerService {
         }
         String url = urlElements.first().absUrl("href");
         return url.isEmpty() ? null : url;
+    }
+    
+    /**
+     * 从HTML元素中提取作者信息
+     */
+    private String extractAuthor(Element element) {
+        try {
+            // 尝试多种可能的选择器来获取作者信息
+            Element authorElement = element.select(".shop-info").get(1);
+            if (authorElement != null) {
+                return authorElement.text().trim();
+            }
+            // 如果没找到，尝试从描述中提取
+            String description = extractDescription(element);
+            if (description != null) {
+                // 简单的作者信息提取逻辑，可以根据实际情况调整
+                if (description.contains("作者：")) {
+                    int startIndex = description.indexOf("作者：") + 3;
+                    int endIndex = description.indexOf("\n", startIndex);
+                    if (endIndex > startIndex) {
+                        return description.substring(startIndex, endIndex).trim();
+                    } else {
+                        return description.substring(startIndex).trim();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("提取作者信息失败: {}", e.getMessage());
+        }
+        return null;
     }
 }

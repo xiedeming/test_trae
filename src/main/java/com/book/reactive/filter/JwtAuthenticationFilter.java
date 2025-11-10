@@ -36,9 +36,9 @@ public class JwtAuthenticationFilter implements WebFilter {
             return chain.filter(exchange);
         }
         // 临时禁用请求时间验证，以解决DELETE请求返回401的问题
-        // if (!validateRequestTime(exchange)) {
-        //     return unauthorizedResponse(exchange, "请求时间验证失败");
-        // }
+        if (!validateRequestTime(exchange)) {
+            return unauthorizedResponse(exchange, "请求时间验证失败");
+        }
 
   
 

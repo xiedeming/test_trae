@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.book.reactive.model.Book;
+import com.book.reactive.scheduler.BookCrawlerJob;
 import com.book.reactive.service.BookService;
 import com.book.reactive.util.MemoryCacheUtil;
 import com.book.reactive.util.RedisUtil;
@@ -15,6 +16,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -33,6 +35,9 @@ public class BookController {
 
     @Autowired
     private MemoryCacheUtil memoryCacheUtil;
+    
+    @Autowired
+    private BookCrawlerJob bookCrawlerJob;
 
 
     // 缓存键前缀
@@ -284,7 +289,33 @@ public class BookController {
                     }
                 }))
                 .then(Mono.just(ResponseEntity.ok().<Void>build()));
-
+    }
+    
+    /**
+     * 手动同步书籍
+     * @return 同步结果
+     */
+    @PostMapping("/sync")
+    public Mono<ResponseEntity<Map<String, Object>>> syncBooks() {
+        return bookCrawlerJob.executeCrawlerJobWithLock()
+            .map(lockAcquired -> {
+                Map<String, Object> result = new HashMap<>();
+                if (lockAcquired) {
+                    result.put("success", true);
+                    result.put("message", "书籍同步任务已开始执行，请稍后查看结果");
+                    return ResponseEntity.ok(result);
+                } else {
+                    result.put("success", false);
+                    result.put("message", "已有同步任务在执行中，请稍后再试");
+                    return ResponseEntity.status(HttpStatus.CONFLICT).body(result);
+                }
+            })
+            .onErrorResume(error -> {
+                Map<String, Object> result = new HashMap<>();
+                result.put("success", false);
+                result.put("message", "同步任务启动失败: " + error.getMessage());
+                return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(result));
+            });
     }
 
 }

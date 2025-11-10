@@ -101,6 +101,7 @@
                     </div>
                 </div>
                 <div class="col-md-4 text-end">
+                    <button class="btn btn-secondary me-2" id="syncBooksBtn">同步书籍</button>
                     <button class="btn btn-success" id="addBookBtn">添加书籍</button>
                 </div>
             </div>
@@ -228,6 +229,11 @@
             // 退出登录按钮点击事件
             $('#logoutBtn').click(function() {
                 logout();
+            });
+            
+            // 同步书籍按钮点击事件
+            $('#syncBooksBtn').click(function() {
+                syncBooks();
             });
             
             // 通知关闭按钮事件
@@ -531,6 +537,9 @@
             notification.addClass(bgClass);
             $('#notificationMessage').text(message);
             notification.toast('show');
+            
+            // 3秒后自动隐藏
+            setTimeout(hideNotification, 3000);
         }
 
         // 隐藏通知
@@ -546,6 +555,51 @@
         // 隐藏加载遮罩
         function hideLoading() {
             $('#loading').hide();
+        }
+        
+        // 同步书籍
+        function syncBooks() {
+            showLoading();
+            
+            const token = localStorage.getItem('token');
+            
+            $.ajax({
+                url: '/api/books/sync',
+                type: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Request-Time': new Date().getTime()
+                },
+                success: function(response) {
+                    if (response.success) {
+                        showNotification(response.message, 'bg-success');
+                    } else {
+                        showNotification(response.message, 'bg-warning');
+                    }
+                },
+                error: function(xhr) {
+                    if (xhr.status === 409) {
+                        // 冲突状态码，表示已有任务在执行
+                        const response = JSON.parse(xhr.responseText);
+                        showNotification(response.message || '已有同步任务在执行中，请稍后再试', 'bg-warning');
+                    } else if (xhr.status === 401) {
+                        showNotification('登录已过期，请重新登录', 'bg-danger');
+                        setTimeout(() => {
+                            window.location.href = 'login.html';
+                        }, 2000);
+                    } else {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            showNotification(response.message || '同步失败', 'bg-danger');
+                        } catch (e) {
+                            showNotification('同步失败，请稍后重试', 'bg-danger');
+                        }
+                    }
+                },
+                complete: function() {
+                    hideLoading();
+                }
+            });
         }
     </script>
 </body>

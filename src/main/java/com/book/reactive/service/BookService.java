@@ -73,6 +73,7 @@ public class BookService {
                     existingBook.setBookUrl(book.getBookUrl());
                     existingBook.setBookSummary(book.getBookSummary());
                     existingBook.setWebsiteId(book.getWebsiteId());
+                    existingBook.setAuthor(book.getAuthor());
                     existingBook.setModifyUserId(book.getModifyUserId());
                     existingBook.setModifyUserName(book.getModifyUserName());
                     existingBook.setModifyTime(LocalDateTime.now());

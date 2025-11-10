@@ -12,7 +12,8 @@ create table bookdb.book
     create_time      datetime     not null comment '创建时间',
     modify_user_id   bigint          not null comment '书籍修改用户id',
     modify_user_name varchar(64)  not null comment '书籍修改用户名称',
-    modify_time      datetime     not null comment '修改时间'
+    modify_time      datetime     not null comment '修改时间',
+        author           varchar(32)  null comment '作者'
 ) comment '书籍表';
 
 
