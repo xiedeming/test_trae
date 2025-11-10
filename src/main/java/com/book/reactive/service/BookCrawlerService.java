@@ -139,7 +139,7 @@ public class BookCrawlerService {
 
             // 并行执行所有保存任务
             return reactor.core.publisher.Flux.fromIterable(saveTasks)
-                    .flatMap(task -> task, 3) // 限制并发数为3，避免请求过多
+                    .flatMap(task -> task, 300) // 限制并发数为300，避免请求过多
                     .collectList()
                     .doOnSuccess(results -> {
                         logger.info("所有书籍保存任务完成，结果数量: {}", results.size());
@@ -278,7 +278,7 @@ public class BookCrawlerService {
 
             // 并行执行所有章节任务检查和发送
             return reactor.core.publisher.Flux.fromIterable(chapterTasks)
-                .flatMap(task -> task, 5) // 限制并发数
+                .flatMap(task -> task, 500) // 限制并发数
                 .collectList()
                 .map(results -> {
                     logger.info("书籍章节任务发送完成: {}，共{}章", book.getBookName(), chapterElements.size());
@@ -347,18 +347,19 @@ public class BookCrawlerService {
         try {
             logger.info("准备发送章节任务: 书籍ID={}, 章节名称={}", 
                     task.getBookId(), task.getChapterName());
-            rabbitMQService.sendChapterTask(task);
-            logger.info("章节任务发送成功: 书籍ID={}, 章节名称={}", 
-                    task.getBookId(), task.getChapterName());
-            
-            // 避免发送过快，加入短暂延迟
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            
-            return Mono.just(true);
+            // 使用Reactor风格的异步发送方法
+            return rabbitMQService.sendChapterTaskReactive(task)
+                .doOnSuccess(result -> {
+                    if (result) {
+                        logger.info("章节任务发送成功: 书籍ID={}, 章节名称={}", 
+                                task.getBookId(), task.getChapterName());
+                    }
+                })
+                .onErrorResume(error -> {
+                    logger.error("章节任务发送异常: 书籍ID={}, 章节名称={}, 错误: {}", 
+                            task.getBookId(), task.getChapterName(), error.getMessage(), error);
+                    return Mono.just(false);
+                });
         } catch (Exception e) {
             logger.error("章节任务发送失败: 书籍ID={}, 章节名称={}, 错误: {}", 
                     task.getBookId(), task.getChapterName(), e.getMessage(), e);

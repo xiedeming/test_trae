@@ -20,6 +20,7 @@
   -p 50002:50000 \
   -v /opt/jenkins_home:/var/jenkins_home \
   jenkins/jenkins -->
+  <!-- docker run -d --name redis -p 6379:6379 --network=my-network redis:latest redis-server --requirepass 9e4e9f2ea8f646cc887140a05c149220 -->
 ### 快速启动
 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
 1. 克隆项目到本地
