@@ -10,9 +10,9 @@
 - 确保 8080、3306 和 6379 端口未被占用
 # docker build -t spring-reactive-test . 
 # 连接到本地Redis和RabbitMQ服务的完整命令（使用--network=host或明确指定网络）
-<!-- docker run -d --name spring-reactive-test \
-  -p 8080:8080 \
-  --network=host \
+<!-- docker run -d --name spring-reactive-test-1 \
+  -p 8080:8081 \
+  --network=my-network \
   spring-reactive-test -->
   <!-- docker run -d \
   --name jenkins \
