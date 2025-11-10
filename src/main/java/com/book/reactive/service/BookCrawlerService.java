@@ -139,7 +139,7 @@ public class BookCrawlerService {
 
             // 并行执行所有保存任务
             return reactor.core.publisher.Flux.fromIterable(saveTasks)
-                    .flatMap(task -> task, 300) // 限制并发数为300，避免请求过多
+                    .flatMap(task -> task, 20) // 限制并发数为20，避免请求过多
                     .collectList()
                     .doOnSuccess(results -> {
                         logger.info("所有书籍保存任务完成，结果数量: {}", results.size());
