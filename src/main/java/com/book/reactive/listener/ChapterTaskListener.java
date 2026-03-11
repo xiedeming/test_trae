@@ -188,7 +188,7 @@ public class ChapterTaskListener {
                 
                 // 生成特征码并检查重复（基于内容）
                 String featureCode = stringUtil.extractFeatureCode(content);
-                String featureCodeKey = CHAPTER_FEATURE_CODE_KEY_PREFIX + featureCode+":"+task.getChapterName();
+                String featureCodeKey = CHAPTER_FEATURE_CODE_KEY_PREFIX + featureCode;
                 
                 // 先在内存中检查，避免重复处理
                 if (processedFeatureCodes.containsKey(featureCode)) {
@@ -278,7 +278,7 @@ public class ChapterTaskListener {
             // 通用的章节内容解析示例
             // 实际使用时需要根据具体网站的HTML结构进行调整
             Elements contentElements = doc.select(
-                    "#htmlContent");
+                    "#htmlContent, .content, .chapter-content, #chapterContent, .article-content");
             
             if (contentElements.isEmpty()) {
                 // 如果没有找到内容元素，尝试清理整个文档

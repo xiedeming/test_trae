@@ -75,11 +75,13 @@ public class ChapterService {
             .flatMap(savedChapter -> {
                 // 保存成功后更新Redis缓存
                 String featureCode = stringUtil.extractFeatureCode(savedChapter.getChapterTxt());
-                String chapterFeatureCodeKey = "chapter:feature:" + featureCode;  
+                String chapterFeatureCodeKey = "chapter:feature:" + featureCode;
+                String chapterUrlKey = CHAPTER_URL_KEY_PREFIX + savedChapter.getBookId() + ":" + savedChapter.getChapterUrl();
                 
                 return 
-                    // 缓存章节URL索引（使用特征码作为主要缓存键）
+                    // 缓存章节URL索引和特征码
                     reactiveRedisTemplate.opsForValue().set(chapterFeatureCodeKey, savedChapter.getId())
+                    .then(reactiveRedisTemplate.opsForValue().set(chapterUrlKey, savedChapter.getId()))
                     // 返回保存的章节对象
                     .then(Mono.just(savedChapter));
             });
